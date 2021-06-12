@@ -87,12 +87,10 @@ class Furnace:
         total = self.denormalize(self.current[-1])
         return {
             "total": total,
-            "s100": 0,
-            "s200": 0,
-            "s300": 0,
-            "s400": 0,
-            "s500": 0,
-            "s600": 0
+            "s100": total * 0.317766301022455,
+            "s300": total * 0.32312964196620214,
+            "s500": total * 0.27303963791770425,
+            "s600": total * 0.08606441909363872
         }
 
 
