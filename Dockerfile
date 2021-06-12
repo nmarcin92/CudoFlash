@@ -10,4 +10,5 @@ RUN pip install -r requirements.txt
 
 # Run the application:
 COPY script /opt/app
-CMD ["python", "./opt/app/app.py"]
+COPY models /opt/app/models
+CMD ["python", "/opt/app/app.py"]
