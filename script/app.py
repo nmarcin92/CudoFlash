@@ -4,6 +4,7 @@ from flask import Flask, request
 from flask_cors import CORS, cross_origin
 from tensorflow import keras
 import numpy as np
+import os
 
 import threading
 
@@ -45,19 +46,38 @@ class Furnace:
     expected = 25.0
 
 
-    def state_vector(self):
-        v = np.array([self.params + self.current + self.future])
+    def state_vector(self, current_values = None):
+        if current_values:
+            v = np.array([self.params[3:] + current_values + self.current + self.future])
+        else:
+            v = np.array([self.params + self.current + self.future])
         v = v[:, :-1]
         v = v.reshape((v.shape[0], 1, v.shape[1]))
         return v
 
     def initialize(self):
+        print("initializing...")
+        print(f"model found: {os.path.exists(MODEL_PATH)}")
         self.model = keras.models.load_model(MODEL_PATH)
         threading.Thread(target=self.simulation_start).start()
         print ("Model initialized")
 
+    def normalize(self, value):
+        return (value - STR_LAC["min"]) / (STR_LAC["max"] - STR_LAC["min"])
+
     def denormalize(self, value):
         return value * (STR_LAC["max"] - STR_LAC["min"]) + STR_LAC["min"]
+
+    def current_set_values(self):
+        return self.params[-3:]
+
+    def set_values(self, new_values):
+        print(f"Setting values from {self.params[-3:]} to {new_values}")
+        self.params = self.params[3:] + list(new_values)
+
+    def ml(self, x, y, z):
+        state = self.state_vector([x, y, z])
+        return self.model.predict(state)[0][0]
 
     def step(self):
         try:
@@ -72,10 +92,18 @@ class Furnace:
             print(e)
 
     def simulation_start(self):
+        print("Simulation thread initialized")
         while True:
+            print(f"Simulation step; running: {self.running}")
             if self.running:
                 self.step()
-            time.sleep(3)
+            print("Sleeping")
+            try:
+                time.sleep(5)
+            except Exception as e:
+                print ("ERROR")
+                print (e)
+            print("Waked up")
 
     def start_sim(self):
         self.running = True
@@ -93,6 +121,103 @@ class Furnace:
             "s600": total * 0.08606441909363872
         }
 
+##################################################
+
+import random
+import math
+
+
+
+class Controller:
+    def __init__(self, furnace):
+        self.furnace = furnace
+
+    max_zmiana_powietrza = 0.1
+    max_zmiana_tlenu = 0.1
+    max_zmiana_podmuch = 0.1
+
+    def initialize(self):
+        threading.Thread(target=self.controller_start).start()
+
+    def controller_start(self):
+        while True:
+            print("Controller step")
+            time.sleep(5)
+
+            if self.furnace.running:
+                current_set_values = self.furnace.current_set_values()
+                new_params = self.simulated_annealing(current_set_values[0], current_set_values[1], current_set_values[2])
+                self.furnace.set_values(new_params)
+
+    def wartosc_oczekiwana(self):
+        return self.furnace.normalize(self.furnace.expected)
+
+    # Przyjmuje nastaw i zwraca jaka dla nich wystąpi strata
+    def ml(self, x, y, z):
+        return self.furnace.ml(x, y, z)
+
+    def random_sign(self):
+        return 1 if random.random() < 0.5 else -1
+
+    def get_cost(self, x):
+        return (self.wartosc_oczekiwana() - x) ** 2
+
+    # X - Przepływ powietrza
+    # Y - Zakres tlenu
+    # Z - Predkosc dmuchu
+    def get_random_neighbor(self, current_temp, currentX, currentY, currentZ):
+        temp = current_temp / 100
+        x = currentX + self.random_sign() * (random.random() * temp) * self.max_zmiana_powietrza
+        y = currentY + self.random_sign() * (random.random() * temp) * self.max_zmiana_tlenu
+        z = currentZ + self.random_sign() * (random.random() * temp) * self.max_zmiana_podmuch
+        return (x, y, z)
+
+    def simulated_annealing(self, initX, initY, initZ):
+        """Peforms simulated annealing to find a solution"""
+        initial_temp = 90.0
+        final_temp = .1
+        alpha = 1
+
+        current_temp = initial_temp
+
+        # Start by initializing the current state with the initial state
+        currentX = initX
+        currentY = initY
+        currentZ = initZ
+
+        solution = (currentX, currentY, currentZ)
+        current_cost = self.ml(currentX, currentY, currentZ)
+
+        idx = 0
+        print("Started sim an")
+        while current_temp > final_temp:
+            idx += 1
+            if idx % 10 == 0:
+                print(idx)
+                print(current_temp)
+            neighbor = self.get_random_neighbor(current_temp, currentX, currentY, currentZ)
+
+            # Check if neighbor is best so far
+            new_cost = self.get_cost(self.ml(neighbor[0], neighbor[1], neighbor[2]))
+            cost_diff = current_cost - new_cost
+
+            # if the new solution is better, accept it
+            if cost_diff > 0:
+                solution = neighbor
+                current_cost = new_cost
+            # if the new solution is not better, accept it with a probability of e^(-cost/temp)
+            else:
+                if random.uniform(0, 1) < math.exp(-cost_diff / current_temp):
+                    solution = neighbor
+                    current_cost = new_cost
+            # decrement the temperature
+            current_temp -= alpha
+            # print(solution)
+        return solution
+
+
+###################################################
+
 
 class AppDefinition:
 
@@ -102,6 +227,8 @@ class AppDefinition:
         self.app.config['CORS_HEADERS'] = 'Content-Type'
         self.furnace = Furnace()
         self.furnace.initialize()
+        self.controller = Controller(self.furnace)
+        self.controller.initialize()
 
 
 app = AppDefinition()
@@ -114,7 +241,7 @@ def desired_value():
         return {"value": app.furnace.expected}
     elif request.method == "POST":
         app.furnace.expected = float(request.json["value"])
-        return "ok"
+        return {}
 
 
 @app.app.route("/current")
@@ -123,18 +250,24 @@ def current():
     return app.furnace.current_parameters()
 
 
+@app.app.route("/currentSetValues")
+@cross_origin()
+def current_set_values():
+    return {"values": app.furnace.current_set_values()}
+
+
 @app.app.route("/start")
 @cross_origin()
 def start():
     app.furnace.start_sim()
-    return "ok"
+    return {}
 
 
 @app.app.route("/stop")
 @cross_origin()
 def stop():
     app.furnace.stop_sim()
-    return "ok"
+    return {}
 
 
 
