@@ -1,3 +1,8 @@
 flask
 flask-cors
 pyopenssl
+
+pandas
+sklearn
+matplotlib
+tensorflow
