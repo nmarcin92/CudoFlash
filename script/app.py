@@ -137,7 +137,7 @@ class Furnace:
 import random
 import math
 
-
+from scipy import optimize
 
 class Controller:
     def __init__(self, furnace):
@@ -149,6 +149,12 @@ class Controller:
 
     def initialize(self):
         threading.Thread(target=self.controller_start).start()
+
+    # def sp_cost(self, array):
+    #     array[]
+    #
+    # def sp_ann(self, x, y, z):
+    #     optimize.dual_annealing()
 
     def controller_start(self):
         while True:
