@@ -162,14 +162,14 @@ class Controller:
             func=self.sp_cost,
             bounds=np.array([[0, 1], [0, 1], [0, 1]]),
             x0=np.array([x, y, z]),
-            maxiter=4,
+            maxiter=2,
             initial_temp=80
         )
 
     def controller_start(self):
         while True:
             print("Controller step")
-            time.sleep(4)
+            time.sleep(2)
 
             if self.furnace.running:
                 current_set_values = self.furnace.current_set_values()
