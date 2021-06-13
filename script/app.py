@@ -11,6 +11,9 @@ import threading
 MODEL_PATH = "/opt/app/models/rnn"
 #MODEL_PATH = "/home/mnowak/PycharmProjects/CudoFlash/models/rnn"
 
+POW_DYST_NORM = {"min": 1900.,"max": 3500.} #
+ZAW_TLE_NORM = {"min": 65., "max": 81.}     #
+PRE_DMU = { "min": 40.,"max": 70.}          #
 STR_LAC = {"min": 15., "max": 30.}
 
 INIT_PARAMS = [0.5, 1., 0.33333333, 0.5, 1.,
@@ -70,6 +73,14 @@ class Furnace:
 
     def current_set_values(self):
         return self.params[-3:]
+
+    def current_set_values_normalized(self):
+        v = self.params[-3:]
+        return [
+            v[0] * (POW_DYST_NORM["max"] - POW_DYST_NORM["min"]) + POW_DYST_NORM["min"],
+            v[1] * (ZAW_TLE_NORM["max"] - ZAW_TLE_NORM["min"]) + ZAW_TLE_NORM["min"],
+            v[2] * (PRE_DMU["max"] - PRE_DMU["min"]) + PRE_DMU["min"]
+        ]
 
     def set_values(self, new_values):
         print(f"Setting values from {self.params[-3:]} to {new_values}")
@@ -264,7 +275,7 @@ def current():
 @app.app.route("/currentSetValues")
 @cross_origin()
 def current_set_values():
-    return {"values": app.furnace.current_set_values()}
+    return {"values": app.furnace.current_set_values_normalized()}
 
 
 @app.app.route("/start/<expected>")
