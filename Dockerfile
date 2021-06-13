@@ -14,8 +14,8 @@ RUN apt-get install dumb-init -y
 COPY script /opt/app
 COPY models /opt/app/models
 
-#ENTRYPOINT ["/usr/bin/dumb-init", "--"]
-#CMD ["python", "/opt/app/app.py"]
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["python", "-u", "/opt/app/app.py"]
 
-CMD ["/bin/sh", "-ec", "while :; do echo '.'; sleep 5 ; done"]
+#CMD ["/bin/sh", "-ec", "while :; do echo '.'; sleep 5 ; done"]
 

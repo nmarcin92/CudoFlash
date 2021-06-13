@@ -43,7 +43,7 @@ class Furnace:
     future = INIT_FUTURE
     running = False
 
-    expected = 25.0
+    expected = 22.0
 
 
     def state_vector(self, current_values = None):
@@ -142,7 +142,7 @@ class Controller:
     def controller_start(self):
         while True:
             print("Controller step")
-            time.sleep(5)
+            time.sleep(4)
 
             if self.furnace.running:
                 current_set_values = self.furnace.current_set_values()
@@ -162,6 +162,10 @@ class Controller:
     def get_cost(self, x):
         return (self.wartosc_oczekiwana() - x) ** 2
 
+
+    def safe_val(self, v):
+        return max(min(v, 1.0), 0.0)
+
     # X - Przepływ powietrza
     # Y - Zakres tlenu
     # Z - Predkosc dmuchu
@@ -170,13 +174,14 @@ class Controller:
         x = currentX + self.random_sign() * (random.random() * temp) * self.max_zmiana_powietrza
         y = currentY + self.random_sign() * (random.random() * temp) * self.max_zmiana_tlenu
         z = currentZ + self.random_sign() * (random.random() * temp) * self.max_zmiana_podmuch
-        return (x, y, z)
+
+        return (self.safe_val(x), self.safe_val(y), self.safe_val(z))
 
     def simulated_annealing(self, initX, initY, initZ):
         """Peforms simulated annealing to find a solution"""
         initial_temp = 90.0
         final_temp = .1
-        alpha = 1
+        alpha = 2.0
 
         current_temp = initial_temp
 
@@ -186,34 +191,40 @@ class Controller:
         currentZ = initZ
 
         solution = (currentX, currentY, currentZ)
-        current_cost = self.ml(currentX, currentY, currentZ)
+        initial_cost = self.get_cost(self.ml(currentX, currentY, currentZ))
+        current_cost = initial_cost
+        expected = 0
 
-        idx = 0
         print("Started sim an")
         while current_temp > final_temp:
-            idx += 1
-            if idx % 10 == 0:
-                print(idx)
-                print(current_temp)
             neighbor = self.get_random_neighbor(current_temp, currentX, currentY, currentZ)
 
             # Check if neighbor is best so far
-            new_cost = self.get_cost(self.ml(neighbor[0], neighbor[1], neighbor[2]))
-            cost_diff = current_cost - new_cost
+            ml = self.ml(neighbor[0], neighbor[1], neighbor[2])
+            new_cost = self.get_cost(ml)
 
             # if the new solution is better, accept it
-            if cost_diff > 0:
+            if new_cost < current_cost:
+                print (new_cost)
                 solution = neighbor
                 current_cost = new_cost
+                expected = ml
             # if the new solution is not better, accept it with a probability of e^(-cost/temp)
             else:
-                if random.uniform(0, 1) < math.exp(-cost_diff / current_temp):
+                if False and random.uniform(0, 1) < math.exp(-new_cost / current_temp):
                     solution = neighbor
                     current_cost = new_cost
+                    expected = ml
             # decrement the temperature
             current_temp -= alpha
             # print(solution)
-        return solution
+        print (f"SimAn done, expected: {expected}, wanted: {self.wartosc_oczekiwana()}")
+        if current_cost < initial_cost:
+            print("changed")
+            return solution
+        else:
+            print("not changed")
+            return (initX, initY, initZ)
 
 
 ###################################################
@@ -256,9 +267,11 @@ def current_set_values():
     return {"values": app.furnace.current_set_values()}
 
 
-@app.app.route("/start")
+@app.app.route("/start/<expected>")
 @cross_origin()
-def start():
+def start(expected):
+    print(f"Setting expected to {expected}")
+    app.furnace.expected = float(expected)
     app.furnace.start_sim()
     return {}
 
