@@ -44,9 +44,11 @@ class Furnace:
     params = INIT_PARAMS
     current = INIT_CURRENT
     future = INIT_FUTURE
-    running = False
+    running = True
 
     expected = 22.0
+
+    to_set_values = INIT_PARAMS[-3:]
 
 
     def state_vector(self, current_values = None):
@@ -84,7 +86,7 @@ class Furnace:
 
     def set_values(self, new_values):
         print(f"Setting values from {self.params[-3:]} to {new_values}")
-        self.params = self.params[3:] + list(new_values)
+        self.to_set_values = new_values
 
     def ml(self, x, y, z):
         state = self.state_vector([x, y, z])
@@ -92,6 +94,7 @@ class Furnace:
 
     def step(self):
         try:
+            self.params = self.params[3:] + list(self.to_set_values)
             state = self.state_vector()
             predicted = self.model.predict(state)[0][0]
             self.current = self.current[1:] + [self.future[0]]
@@ -150,11 +153,18 @@ class Controller:
     def initialize(self):
         threading.Thread(target=self.controller_start).start()
 
-    # def sp_cost(self, array):
-    #     array[]
-    #
-    # def sp_ann(self, x, y, z):
-    #     optimize.dual_annealing()
+    def sp_cost(self, array):
+        ex = self.ml(array[0], array[1], array[2])
+        return self.get_cost(ex)
+
+    def sp_ann(self, x, y, z):
+        return optimize.dual_annealing(
+            func=self.sp_cost,
+            bounds=np.array([[0, 1], [0, 1], [0, 1]]),
+            x0=np.array([x, y, z]),
+            maxiter=4,
+            initial_temp=80
+        )
 
     def controller_start(self):
         while True:
@@ -163,7 +173,13 @@ class Controller:
 
             if self.furnace.running:
                 current_set_values = self.furnace.current_set_values()
-                new_params = self.simulated_annealing(current_set_values[0], current_set_values[1], current_set_values[2])
+                print ("Start")
+                new_params = list(self.sp_ann(current_set_values[0], current_set_values[1], current_set_values[2]).x)
+                print(self.sp_ann(current_set_values[0], current_set_values[1], current_set_values[2]).x)
+                print(f"exx: {self.ml(new_params[0], new_params[1], new_params[2])}")
+                print("stop")
+
+                #new_params = self.simulated_annealing(current_set_values[0], current_set_values[1], current_set_values[2])
                 self.furnace.set_values(new_params)
 
     def wartosc_oczekiwana(self):
